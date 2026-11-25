@@ -4,182 +4,168 @@ using UnityEditor;
 namespace TheAshenCrown.EditorTools
 {
     /// <summary>
-    /// 1-Click Procedural Terrain Generator for The Ashen Crown.
-    /// Creates realistic multi-octave rolling hills, protective mountain borders,
-    /// a flat village plateau, and automatic slope-based texturing.
+    /// Far Cry 3 style Island & Ocean Generator for The Ashen Crown.
+    /// Creates an organic 1km x 1km island surrounded by the open sea with:
+    /// - Organic sandy beaches, coves, and peninsulas
+    /// - Lush coastal jungle plateaus and valleys
+    /// - Towering central volcanic / limestone ridges and cliffs
+    /// - Full 3-layer auto-texturing (Beach Sand -> Jungle Grass -> Cliff Rock)
+    /// - Auto-created tropical ocean water plane
     /// </summary>
     public class DunmereTerrainGenerator : EditorWindow
     {
-        [Header("Terrain Dimensions")]
+        [Header("Island Dimensions")]
         private float terrainWidth = 1000f;
         private float terrainLength = 1000f;
-        private float terrainHeight = 220f;
+        private float maxElevation = 180f;
+        private float seaLevel = 10f;
 
-        [Header("Landscape Shaping")]
-        private float hillFrequency = 0.0035f;
-        private float hillIntensity = 0.15f;
-        private float mountainBorderHeight = 0.65f;
-        private float centerFlatRadius = 90f;
-        private int seed = 42;
+        [Header("Island Topography")]
+        private int seed = 777;
+        private float islandShapeNoiseScale = 0.003f;
+        private float mountainRidgeFrequency = 0.005f;
+        private float mountainIntensity = 0.75f;
+        private float beachWidth = 24f;
 
-        [Header("Texture Assignments (Optional)")]
-        private Texture2D grassTexture;
-        private Texture2D rockTexture;
-        private Texture2D dirtTexture;
-
-        [MenuItem("The Ashen Crown/Terrain Generator Window")]
-        public static void ShowWindow()
-        {
-            var window = GetWindow<DunmereTerrainGenerator>("Terrain Generator");
-            window.minSize = new Vector2(360, 480);
-            window.FindDefaultTextures();
-        }
-
-        [MenuItem("The Ashen Crown/Quick Generate Dunmere Landscape")]
-        public static void QuickGenerate()
+        [MenuItem("The Ashen Crown/Generate Far Cry 3 Style Island")]
+        public static void QuickGenerateIsland()
         {
             var generator = CreateInstance<DunmereTerrainGenerator>();
-            generator.FindDefaultTextures();
-            generator.GenerateWorld();
+            generator.GenerateIslandWorld();
             DestroyImmediate(generator);
         }
 
-        private void OnEnable()
+        [MenuItem("The Ashen Crown/Island Generator Window")]
+        public static void ShowWindow()
         {
-            FindDefaultTextures();
-        }
-
-        private void FindDefaultTextures()
-        {
-            if (grassTexture == null)
-            {
-                grassTexture = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/GrassBushyThick_Albedo.tif");
-            }
-            if (rockTexture == null)
-            {
-                rockTexture = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/Moon_Albedo.png");
-            }
+            var window = GetWindow<DunmereTerrainGenerator>("Island Generator");
+            window.minSize = new Vector2(360, 480);
         }
 
         private void OnGUI()
         {
             GUILayout.Space(10);
-            GUILayout.Label("THE ASHEN CROWN — WORLD GENERATOR", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox("Generates an expansive 1km x 1km medieval landscape with natural hills, mountain barriers, and auto-painted terrain in seconds.", MessageType.Info);
+            GUILayout.Label("THE ASHEN CROWN — ISLAND GENERATOR", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("Generates a Far Cry 3 style tropical/medieval island surrounded by the sea with organic coves, beaches, jungle valleys, and mountain peaks.", MessageType.Info);
 
             GUILayout.Space(10);
-            GUILayout.Label("World Scale", EditorStyles.boldLabel);
-            terrainWidth = EditorGUILayout.FloatField("Width (meters)", terrainWidth);
-            terrainLength = EditorGUILayout.FloatField("Length (meters)", terrainLength);
-            terrainHeight = EditorGUILayout.FloatField("Max Height (meters)", terrainHeight);
+            GUILayout.Label("Island Dimensions", EditorStyles.boldLabel);
+            terrainWidth = EditorGUILayout.FloatField("Map Width (meters)", terrainWidth);
+            terrainLength = EditorGUILayout.FloatField("Map Length (meters)", terrainLength);
+            maxElevation = EditorGUILayout.FloatField("Peak Elevation (meters)", maxElevation);
+            seaLevel = EditorGUILayout.Slider("Sea Level", seaLevel, 5f, 25f);
 
             GUILayout.Space(10);
-            GUILayout.Label("Landscape Features", EditorStyles.boldLabel);
+            GUILayout.Label("Topography & Shape", EditorStyles.boldLabel);
             seed = EditorGUILayout.IntField("Random Seed", seed);
-            hillFrequency = EditorGUILayout.Slider("Hill Density", hillFrequency, 0.001f, 0.01f);
-            hillIntensity = EditorGUILayout.Slider("Hill Height Factor", hillIntensity, 0.05f, 0.4f);
-            mountainBorderHeight = EditorGUILayout.Slider("Border Mountains", mountainBorderHeight, 0.2f, 1.0f);
-            centerFlatRadius = EditorGUILayout.Slider("Village Plateau Size", centerFlatRadius, 40f, 200f);
-
-            GUILayout.Space(10);
-            GUILayout.Label("Ground Textures", EditorStyles.boldLabel);
-            grassTexture = (Texture2D)EditorGUILayout.ObjectField("Grass (Plains)", grassTexture, typeof(Texture2D), false);
-            rockTexture = (Texture2D)EditorGUILayout.ObjectField("Rock (Cliffs)", rockTexture, typeof(Texture2D), false);
-            dirtTexture = (Texture2D)EditorGUILayout.ObjectField("Dirt (Paths)", dirtTexture, typeof(Texture2D), false);
+            mountainIntensity = EditorGUILayout.Slider("Mountain Heights", mountainIntensity, 0.4f, 1.2f);
+            beachWidth = EditorGUILayout.Slider("Beach Flatness Zone", beachWidth, 10f, 50f);
 
             GUILayout.Space(20);
-            GUI.backgroundColor = new Color(0.2f, 0.75f, 0.3f);
-            if (GUILayout.Button("GENERATE WORLD (1-Click)", GUILayout.Height(42)))
+            GUI.backgroundColor = new Color(0.1f, 0.65f, 0.9f);
+            if (GUILayout.Button("GENERATE ISLAND & OCEAN", GUILayout.Height(42)))
             {
-                GenerateWorld();
+                GenerateIslandWorld();
             }
 
             GUI.backgroundColor = Color.white;
-            GUILayout.Space(5);
+            GUILayout.Space(8);
             if (GUILayout.Button("Randomize Seed & Regenerate", GUILayout.Height(28)))
             {
                 seed = Random.Range(100, 99999);
-                GenerateWorld();
+                GenerateIslandWorld();
             }
         }
 
-        public void GenerateWorld()
+        public void GenerateIslandWorld()
         {
             Terrain terrain = FindOrCreateTerrain();
-            Undo.RegisterCompleteObjectUndo(terrain.terrainData, "Generate Dunmere Landscape");
+            Undo.RegisterCompleteObjectUndo(terrain.terrainData, "Generate Island Landscape");
 
             TerrainData tData = terrain.terrainData;
-            tData.size = new Vector3(terrainWidth, terrainHeight, terrainLength);
+            tData.size = new Vector3(terrainWidth, maxElevation, terrainLength);
 
             int resolution = tData.heightmapResolution;
             float[,] heights = new float[resolution, resolution];
 
             Vector2 center = new Vector2(resolution * 0.5f, resolution * 0.5f);
-            float maxDistFromCenter = resolution * 0.5f;
+            float maxRadius = resolution * 0.44f;
 
             Random.InitState(seed);
-            float offsetX = Random.Range(0f, 9999f);
-            float offsetY = Random.Range(0f, 9999f);
+            float seedOffsetX = Random.Range(0f, 9999f);
+            float seedOffsetY = Random.Range(0f, 9999f);
+
+            float seaLevelNormalized = seaLevel / maxElevation;
 
             for (int y = 0; y < resolution; y++)
             {
                 for (int x = 0; x < resolution; x++)
                 {
-                    // Distance from center of map (0 = center, 1 = perimeter border)
-                    float dist = Vector2.Distance(new Vector2(x, y), center) / maxDistFromCenter;
+                    float currentDist = Vector2.Distance(new Vector2(x, y), center);
 
-                    // Layer 1: Broad rolling landscape
-                    float broadNoise = Mathf.PerlinNoise((x * hillFrequency) + offsetX, (y * hillFrequency) + offsetY);
+                    // Organic coastline distortion (creates coves, bays, and natural peninsulas)
+                    float coastAngle = Mathf.Atan2(y - center.y, x - center.x);
+                    float coastWarp = Mathf.PerlinNoise(Mathf.Cos(coastAngle) * 2.2f + seedOffsetX, Mathf.Sin(coastAngle) * 2.2f + seedOffsetY) * 0.28f;
+                    coastWarp += Mathf.PerlinNoise((x * islandShapeNoiseScale) + seedOffsetX, (y * islandShapeNoiseScale) + seedOffsetY) * 0.15f;
 
-                    // Layer 2: Medium hills
-                    float midNoise = Mathf.PerlinNoise((x * hillFrequency * 2.5f) + offsetX + 50f, (y * hillFrequency * 2.5f) + offsetY + 50f) * 0.35f;
+                    float effectiveRadius = maxRadius * (0.85f + coastWarp);
 
-                    // Layer 3: High-frequency surface ripples
-                    float detailNoise = Mathf.PerlinNoise((x * hillFrequency * 6f) + offsetX + 100f, (y * hillFrequency * 6f) + offsetY + 100f) * 0.1f;
+                    // Distance falloff from island center to open sea (1 = center, 0 = submerged in sea)
+                    float islandMask = Mathf.Clamp01(1f - (currentDist / effectiveRadius));
+                    // Smooth S-curve transition into ocean
+                    islandMask = Mathf.SmoothStep(0f, 1f, islandMask);
 
-                    float compositeHeight = (broadNoise + midNoise + detailNoise) * hillIntensity;
-
-                    // Mountain rim barrier around map edge (prevents player falling off world)
-                    if (dist > 0.45f)
+                    if (islandMask <= 0.001f)
                     {
-                        float rimFactor = Mathf.InverseLerp(0.45f, 0.95f, dist);
-                        rimFactor = Mathf.Pow(rimFactor, 1.8f);
-                        float mountainNoise = Mathf.PerlinNoise((x * 0.008f) + offsetX + 200f, (y * 0.008f) + offsetY + 200f);
-                        compositeHeight += rimFactor * mountainBorderHeight * (0.6f + mountainNoise * 0.4f);
+                        // Completely underwater in the deep sea
+                        heights[y, x] = 0f;
+                        continue;
                     }
 
-                    // Gentle flattening for Dunmere village plateau at the center
-                    float villageDist = Vector2.Distance(new Vector2(x, y), center);
-                    float villagePixelRadius = (centerFlatRadius / terrainWidth) * resolution;
-                    if (villageDist < villagePixelRadius)
-                    {
-                        float blend = Mathf.SmoothStep(0f, 1f, villageDist / villagePixelRadius);
-                        compositeHeight = Mathf.Lerp(0.06f, compositeHeight, blend);
-                    }
+                    // Interior Mountain Ridges (Layer 1: Broad mountain masses)
+                    float mRidge = Mathf.PerlinNoise((x * mountainRidgeFrequency) + seedOffsetX + 100f, (y * mountainRidgeFrequency) + seedOffsetY + 100f);
 
-                    heights[y, x] = Mathf.Clamp01(compositeHeight);
+                    // Interior Ridges (Layer 2: Sharp alpine ridge noise)
+                    float sharpRidge = 1f - Mathf.Abs(mRidge * 2f - 1f); // Ridged multifractal
+                    sharpRidge = Mathf.Pow(sharpRidge, 2.0f);
+
+                    // Rolling jungle hills (Layer 3)
+                    float jungleHills = Mathf.PerlinNoise((x * 0.012f) + seedOffsetX + 200f, (y * 0.012f) + seedOffsetY + 200f) * 0.12f;
+
+                    // Combine interior heights
+                    float interiorHeight = (mRidge * 0.4f + sharpRidge * 0.5f + jungleHills) * mountainIntensity;
+
+                    // Sandy coastal beach shelf (gentle rise just above sea level)
+                    float beachShelf = Mathf.Lerp(seaLevelNormalized * 1.05f, 0.45f, islandMask);
+
+                    float totalHeight = Mathf.Lerp(0f, beachShelf + interiorHeight * 0.6f, islandMask);
+
+                    heights[y, x] = Mathf.Clamp01(totalHeight);
                 }
             }
 
             tData.SetHeights(0, 0, heights);
 
-            // Setup Auto-Texturing
-            SetupTerrainLayers(tData);
-            AutoPaintSlopeLayers(tData);
-
-            // Center terrain transform
+            // Center the terrain
             terrain.transform.position = new Vector3(-terrainWidth * 0.5f, 0f, -terrainLength * 0.5f);
 
-            // Optimize for Intel UHD 620
+            // Setup Far Cry 3 Layers (Sand -> Grass -> Rock)
+            SetupIslandLayers(tData);
+            AutoPaintIslandSplatmap(tData, seaLevelNormalized);
+
+            // Create or position Ocean Water Plane
+            SetupOceanWater(terrain);
+
+            // Optimize for UHD 620
             terrain.heightmapPixelError = 5f;
             terrain.basemapDistance = 350f;
             terrain.detailObjectDistance = 80f;
 
-            // Place player on the surface at center
-            PlacePlayerAtCenter(terrain);
+            // Place player on the sunny beach looking at the island
+            PlacePlayerOnBeach(terrain, seaLevel);
 
             EditorUtility.SetDirty(tData);
-            Debug.Log("[DunmereTerrainGenerator] World generated successfully! Scale: 1km x 1km.");
+            Debug.Log("[DunmereTerrainGenerator] Far Cry 3 Island & Ocean generated successfully!");
         }
 
         private Terrain FindOrCreateTerrain()
@@ -190,81 +176,149 @@ namespace TheAshenCrown.EditorTools
                 TerrainData tData = new TerrainData
                 {
                     heightmapResolution = 513,
-                    size = new Vector3(terrainWidth, terrainHeight, terrainLength)
+                    size = new Vector3(terrainWidth, maxElevation, terrainLength)
                 };
 
                 GameObject terrainObj = Terrain.CreateTerrainGameObject(tData);
-                terrainObj.name = "Dunmere_KingdomTerrain";
+                terrainObj.name = "FarCry_IslandTerrain";
                 terrain = terrainObj.GetComponent<Terrain>();
             }
 
             return terrain;
         }
 
-        private void SetupTerrainLayers(TerrainData tData)
+        private void SetupIslandLayers(TerrainData tData)
         {
-            FindDefaultTextures();
+            Texture2D sandTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/SandWavey_Albedo.tif");
+            Texture2D sandNormal = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/SandWavey_Normal.tif");
 
-            TerrainLayer[] existingLayers = tData.terrainLayers;
-            if (existingLayers != null && existingLayers.Length >= 2) return;
+            Texture2D grassTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/GrassBushyThick_Albedo.tif");
+            Texture2D grassNormal = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/GrassBushyThick_Normal.tif");
+
+            Texture2D rockTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/Moon_Albedo.png");
+            Texture2D rockNormal = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/Moon_Normal.png");
+
+            TerrainLayer sandLayer = new TerrainLayer
+            {
+                name = "Layer_BeachSand",
+                diffuseTexture = sandTex,
+                normalMapTexture = sandNormal,
+                tileSize = new Vector2(8f, 8f)
+            };
 
             TerrainLayer grassLayer = new TerrainLayer
             {
-                name = "Layer_Grass",
-                diffuseTexture = grassTexture,
+                name = "Layer_JungleGrass",
+                diffuseTexture = grassTex,
+                normalMapTexture = grassNormal,
                 tileSize = new Vector2(10f, 10f)
             };
 
             TerrainLayer rockLayer = new TerrainLayer
             {
-                name = "Layer_RockCliff",
-                diffuseTexture = rockTexture,
-                tileSize = new Vector2(15f, 15f)
+                name = "Layer_CliffRock",
+                diffuseTexture = rockTex,
+                normalMapTexture = rockNormal,
+                tileSize = new Vector2(18f, 18f)
             };
 
-            tData.terrainLayers = new TerrainLayer[] { grassLayer, rockLayer };
+            tData.terrainLayers = new TerrainLayer[] { sandLayer, grassLayer, rockLayer };
         }
 
-        private void AutoPaintSlopeLayers(TerrainData tData)
+        private void AutoPaintIslandSplatmap(TerrainData tData, float seaLevelNorm)
         {
-            int alphaWidth = tData.alphamapWidth;
-            int alphaHeight = tData.alphamapHeight;
-            int layerCount = tData.terrainLayers.Length;
+            int alphaW = tData.alphamapWidth;
+            int alphaH = tData.alphamapHeight;
+            float[,,] splat = new float[alphaH, alphaW, 3];
 
-            if (layerCount < 2) return;
+            float beachUpperLimit = seaLevelNorm + 0.045f; // Beach ends ~8m above sea level
 
-            float[,,] splatmapData = new float[alphaHeight, alphaWidth, layerCount];
-
-            for (int y = 0; y < alphaHeight; y++)
+            for (int y = 0; y < alphaH; y++)
             {
-                for (int x = 0; x < alphaWidth; x++)
+                for (int x = 0; x < alphaW; x++)
                 {
-                    float normX = (float)x / (alphaWidth - 1);
-                    float normY = (float)y / (alphaHeight - 1);
+                    float normX = (float)x / (alphaW - 1);
+                    float normY = (float)y / (alphaH - 1);
 
-                    // Compute physical slope steepness in degrees (0 to 90)
+                    float heightNorm = tData.GetInterpolatedHeight(normX, normY) / maxElevation;
                     float steepness = tData.GetSteepness(normX, normY);
 
-                    // If slope > 28 degrees, blend to rock; if flat, stay grass
-                    float rockWeight = Mathf.InverseLerp(24f, 42f, steepness);
-                    float grassWeight = 1f - rockWeight;
+                    float sandWeight = 0f;
+                    float grassWeight = 0f;
+                    float rockWeight = 0f;
 
-                    splatmapData[y, x, 0] = grassWeight;
-                    splatmapData[y, x, 1] = rockWeight;
+                    // 1. Beach Zone (Around sea level)
+                    if (heightNorm <= beachUpperLimit)
+                    {
+                        sandWeight = 1f;
+                    }
+                    else
+                    {
+                        // 2. Steep slopes become mountain cliff rock
+                        if (steepness > 26f)
+                        {
+                            rockWeight = Mathf.InverseLerp(24f, 42f, steepness);
+                            grassWeight = 1f - rockWeight;
+                        }
+                        else
+                        {
+                            // Lush inland grassland
+                            grassWeight = 1f;
+                        }
+
+                        // Soft blend between beach sand and jungle grass
+                        float sandTransition = Mathf.InverseLerp(beachUpperLimit + 0.03f, beachUpperLimit, heightNorm);
+                        sandWeight = sandTransition;
+                        grassWeight *= (1f - sandTransition);
+                        rockWeight *= (1f - sandTransition);
+                    }
+
+                    splat[y, x, 0] = sandWeight;
+                    splat[y, x, 1] = grassWeight;
+                    splat[y, x, 2] = rockWeight;
                 }
             }
 
-            tData.SetAlphamaps(0, 0, splatmapData);
+            tData.SetAlphamaps(0, 0, splat);
         }
 
-        private void PlacePlayerAtCenter(Terrain terrain)
+        private void SetupOceanWater(Terrain terrain)
+        {
+            GameObject oceanObj = GameObject.Find("Ocean_WaterPlane");
+            if (oceanObj == null)
+            {
+                oceanObj = GameObject.CreatePrimitive(PrimitiveType.Plane);
+                oceanObj.name = "Ocean_WaterPlane";
+            }
+
+            // Cover 2.5km of open sea around the island
+            oceanObj.transform.position = new Vector3(0f, seaLevel, 0f);
+            oceanObj.transform.localScale = new Vector3(250f, 1f, 250f);
+
+            // Apply tropical AquaMarine material
+            Material waterMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Material_Simple_AquaMarine.mat");
+            if (waterMat != null)
+            {
+                oceanObj.GetComponent<MeshRenderer>().sharedMaterial = waterMat;
+            }
+
+            // Remove box/mesh collider so player can swim/walk into water
+            Collider col = oceanObj.GetComponent<Collider>();
+            if (col != null)
+            {
+                col.isTrigger = true;
+            }
+        }
+
+        private void PlacePlayerOnBeach(Terrain terrain, float seaHeight)
         {
             GameObject player = GameObject.Find("Player");
             if (player != null)
             {
-                Vector3 spawnPos = new Vector3(0f, 0f, 0f);
-                float surfaceY = terrain.SampleHeight(spawnPos);
-                player.transform.position = new Vector3(spawnPos.x, surfaceY + 1.2f, spawnPos.z);
+                // Place player on a sunny beach near the shore
+                Vector3 beachSpawn = new Vector3(0f, 0f, -280f);
+                float surfaceY = terrain.SampleHeight(beachSpawn);
+                player.transform.position = new Vector3(beachSpawn.x, Mathf.Max(surfaceY, seaHeight) + 1.2f, beachSpawn.z);
             }
         }
     }
