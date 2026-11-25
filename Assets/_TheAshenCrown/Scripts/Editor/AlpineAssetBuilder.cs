@@ -7,18 +7,20 @@ namespace TheAshenCrown.EditorTools
 {
     /// <summary>
     /// Procedurally builds authentic 3D OBJ models for Alpine Pines, Glacial Boulders,
-    /// and Thatched Medieval Cottages so you never have to see lollipop sphere trees again!
+    /// and Thatched Medieval Cottages with persistent URP materials saved to disk so they are never pink!
     /// </summary>
     public static class AlpineAssetBuilder
     {
         private const string ModelsDir = "Assets/_TheAshenCrown/Art/Models";
         private const string PrefabsDir = "Assets/_TheAshenCrown/Prefabs";
+        private const string MaterialsDir = "Assets/_TheAshenCrown/Art/Materials";
 
         [MenuItem("The Ashen Crown/Build Real 3D Alpine Assets & Apply")]
         public static void BuildAllAssets()
         {
             if (!Directory.Exists(ModelsDir)) Directory.CreateDirectory(ModelsDir);
             if (!Directory.Exists(PrefabsDir)) Directory.CreateDirectory(PrefabsDir);
+            if (!Directory.Exists(MaterialsDir)) Directory.CreateDirectory(MaterialsDir);
 
             string pineObjPath = Path.Combine(ModelsDir, "Alpine_Spruce_Pine.obj");
             string rockObjPath = Path.Combine(ModelsDir, "Glacial_Mountain_Boulder.obj");
@@ -30,10 +32,22 @@ namespace TheAshenCrown.EditorTools
 
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
 
-            // Create or update Prefabs
-            GameObject pinePrefab = CreatePinePrefab(pineObjPath);
-            GameObject rockPrefab = CreateRockPrefab(rockObjPath);
-            GameObject housePrefab = CreateHousePrefab(houseObjPath);
+            // Create persistent disk materials
+            Material barkMat = GetOrCreateMaterial("Mat_PineBark.mat", new Color(0.24f, 0.15f, 0.08f), null, 0.12f, false);
+            
+            Texture2D needleTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/GrassBushyThick_Albedo.tif");
+            Material needleMat = GetOrCreateMaterial("Mat_PineNeedles.mat", new Color(0.12f, 0.28f, 0.14f), needleTex, 0.20f, true);
+
+            Texture2D rockTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/Moon_Albedo.png");
+            Material rockMat = GetOrCreateMaterial("Mat_GlacialGranite.mat", new Color(0.42f, 0.43f, 0.45f), rockTex, 0.15f, false);
+
+            Material wallMat = GetOrCreateMaterial("Mat_CottageWall.mat", new Color(0.58f, 0.53f, 0.45f), null, 0.10f, false);
+            Material thatchMat = GetOrCreateMaterial("Mat_ThatchedRoof.mat", new Color(0.36f, 0.26f, 0.16f), null, 0.15f, false);
+
+            // Create or update Prefabs with persistent materials
+            GameObject pinePrefab = CreatePinePrefab(pineObjPath, barkMat, needleMat);
+            GameObject rockPrefab = CreateRockPrefab(rockObjPath, rockMat);
+            GameObject housePrefab = CreateHousePrefab(houseObjPath, wallMat, thatchMat);
 
             // Auto-assign to VareliaWorldGenerator in scene
             VareliaWorldGenerator generator = Object.FindFirstObjectByType<VareliaWorldGenerator>();
@@ -47,8 +61,41 @@ namespace TheAshenCrown.EditorTools
 
                 // Regenerate world with real models!
                 generator.GenerateWorld();
-                Debug.Log("[AlpineAssetBuilder] Real 3D Pine Trees, Boulders, and Thatched Cottages built and spawned across Varelia!");
+                Debug.Log("[AlpineAssetBuilder] Real 3D Pine Trees, Boulders, and Thatched Cottages built and spawned with full materials across Varelia!");
             }
+        }
+
+        private static Material GetOrCreateMaterial(string fileName, Color baseColor, Texture2D mainTex, float smoothness, bool doubleSided)
+        {
+            string fullPath = Path.Combine(MaterialsDir, fileName);
+            Material mat = AssetDatabase.LoadAssetAtPath<Material>(fullPath);
+
+            if (mat == null)
+            {
+                Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+                if (lit == null) lit = Shader.Find("Standard");
+                mat = new Material(lit);
+                AssetDatabase.CreateAsset(mat, fullPath);
+            }
+
+            mat.color = baseColor;
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", baseColor);
+            if (mainTex != null)
+            {
+                mat.mainTexture = mainTex;
+                if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", mainTex);
+            }
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smoothness);
+
+            // Double sided rendering for pine foliage so needles render from all camera angles
+            if (doubleSided)
+            {
+                if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
+            }
+
+            EditorUtility.SetDirty(mat);
+            AssetDatabase.SaveAssets();
+            return mat;
         }
 
         private static string GeneratePineTreeOBJ()
@@ -116,14 +163,10 @@ namespace TheAshenCrown.EditorTools
                 for (int b = 0; b < branchesInTier; b++)
                 {
                     float baseAngle = ((float)b / branchesInTier * Mathf.PI * 2f) + (tier * 0.45f);
-                    float branchTilt = -0.32f; // Drooping under gravity
+                    float branchTilt = -0.32f;
 
-                    // Branch start at trunk
                     Vector3 root = new Vector3(Mathf.Cos(baseAngle) * 0.25f, tierY, Mathf.Sin(baseAngle) * 0.25f);
-                    // Branch tip pointing outward and slightly down
                     Vector3 tip = root + new Vector3(Mathf.Cos(baseAngle) * tierRadius, branchTilt * tierRadius, Mathf.Sin(baseAngle) * tierRadius);
-
-                    // Cross lateral offsets
                     Vector3 lateral = Vector3.Cross(tip - root, Vector3.up).normalized * (tierRadius * 0.28f);
 
                     Vector3 p0 = root - lateral * 0.4f;
@@ -131,7 +174,6 @@ namespace TheAshenCrown.EditorTools
                     Vector3 p2 = tip + lateral;
                     Vector3 p3 = tip - lateral;
 
-                    // Emit vertices
                     sb.AppendLine($"v {p0.x:F3} {p0.y:F3} {p0.z:F3}");
                     sb.AppendLine($"v {p1.x:F3} {p1.y:F3} {p1.z:F3}");
                     sb.AppendLine($"v {p2.x:F3} {p2.y:F3} {p2.z:F3}");
@@ -152,7 +194,6 @@ namespace TheAshenCrown.EditorTools
                     int idx2 = vertOffset + 2;
                     int idx3 = vertOffset + 3;
 
-                    // Double-sided faces so branches render from above and below
                     sb.AppendLine($"f {idx0}/{idx0}/{idx0} {idx1}/{idx1}/{idx1} {idx2}/{idx2}/{idx2}");
                     sb.AppendLine($"f {idx0}/{idx0}/{idx0} {idx2}/{idx2}/{idx2} {idx3}/{idx3}/{idx3}");
                     sb.AppendLine($"f {idx2}/{idx2}/{idx2} {idx1}/{idx1}/{idx1} {idx0}/{idx0}/{idx0}");
@@ -173,7 +214,6 @@ namespace TheAshenCrown.EditorTools
             sb.AppendLine("g Rock");
             sb.AppendLine("usemtl RockMat");
 
-            // Jagged, faceted alpine boulder vertices
             Vector3[] verts =
             {
                 new Vector3(-1.8f, 0.0f, -1.5f), new Vector3(1.6f, 0.0f, -1.4f),
@@ -182,7 +222,7 @@ namespace TheAshenCrown.EditorTools
                 new Vector3(1.5f, 1.4f, 1.3f), new Vector3(-1.4f, 1.3f, 1.4f),
                 new Vector3(-0.9f, 2.3f, -0.5f), new Vector3(1.1f, 2.4f, -0.2f),
                 new Vector3(0.5f, 2.2f, 1.0f), new Vector3(-0.6f, 2.1f, 0.9f),
-                new Vector3(0.1f, 2.8f, 0.2f) // Peak
+                new Vector3(0.1f, 2.8f, 0.2f)
             };
 
             foreach (var v in verts)
@@ -221,24 +261,20 @@ namespace TheAshenCrown.EditorTools
             sb.AppendLine("# Medieval Thatched Cottage OBJ - The Ashen Crown");
             sb.AppendLine("o MedievalCottage");
 
-            float w = 5.0f; // Width (half = 2.5)
-            float l = 7.0f; // Length (half = 3.5)
+            float w = 5.0f;
+            float l = 7.0f;
             float wallH = 3.2f;
             float roofPeak = 6.4f;
 
-            // 1. WALLS (Timber & Plaster)
             sb.AppendLine("g CottageWalls");
             sb.AppendLine("usemtl WallMat");
 
             Vector3[] wallVerts =
             {
-                // Base
                 new Vector3(-w*0.5f, 0, -l*0.5f), new Vector3(w*0.5f, 0, -l*0.5f),
                 new Vector3(w*0.5f, 0, l*0.5f), new Vector3(-w*0.5f, 0, l*0.5f),
-                // Eaves
                 new Vector3(-w*0.5f, wallH, -l*0.5f), new Vector3(w*0.5f, wallH, -l*0.5f),
                 new Vector3(w*0.5f, wallH, l*0.5f), new Vector3(-w*0.5f, wallH, l*0.5f),
-                // Gables
                 new Vector3(0, roofPeak, -l*0.5f), new Vector3(0, roofPeak, l*0.5f)
             };
 
@@ -249,16 +285,13 @@ namespace TheAshenCrown.EditorTools
                 sb.AppendLine("vn 0 0.5 0.5");
             }
 
-            // Wall quads
-            sb.AppendLine("f 1/1/1 2/2/2 6/6/6"); sb.AppendLine("f 1/1/1 6/6/6 5/5/5"); // South
-            sb.AppendLine("f 2/2/2 3/3/3 7/7/7"); sb.AppendLine("f 2/2/2 7/7/7 6/6/6"); // East
-            sb.AppendLine("f 3/3/3 4/4/4 8/8/8"); sb.AppendLine("f 3/3/3 8/8/8 7/7/7"); // North
-            sb.AppendLine("f 4/4/4 1/1/1 5/5/5"); sb.AppendLine("f 4/4/4 5/5/5 8/8/8"); // West
-            // Gables (Triangles)
-            sb.AppendLine("f 5/5/5 6/6/6 9/9/9"); // South gable
-            sb.AppendLine("f 8/8/8 10/10/10 7/7/7"); // North gable
+            sb.AppendLine("f 1/1/1 2/2/2 6/6/6"); sb.AppendLine("f 1/1/1 6/6/6 5/5/5");
+            sb.AppendLine("f 2/2/2 3/3/3 7/7/7"); sb.AppendLine("f 2/2/2 7/7/7 6/6/6");
+            sb.AppendLine("f 3/3/3 4/4/4 8/8/8"); sb.AppendLine("f 3/3/3 8/8/8 7/7/7");
+            sb.AppendLine("f 4/4/4 1/1/1 5/5/5"); sb.AppendLine("f 4/4/4 5/5/5 8/8/8");
+            sb.AppendLine("f 5/5/5 6/6/6 9/9/9");
+            sb.AppendLine("f 8/8/8 10/10/10 7/7/7");
 
-            // 2. THATCHED ROOF (Overhanging pitched slopes)
             sb.AppendLine("g ThatchedRoof");
             sb.AppendLine("usemtl ThatchedRoofMat");
             int off = 11;
@@ -281,17 +314,15 @@ namespace TheAshenCrown.EditorTools
                 sb.AppendLine("vn 0 0.8 0.2");
             }
 
-            // West roof slope
             sb.AppendLine($"f {off}/{off}/{off} {off+1}/{off+1}/{off+1} {off+2}/{off+2}/{off+2}");
             sb.AppendLine($"f {off}/{off}/{off} {off+2}/{off+2}/{off+2} {off+3}/{off+3}/{off+3}");
-            // East roof slope
             sb.AppendLine($"f {off+1}/{off+1}/{off+1} {off+4}/{off+4}/{off+4} {off+5}/{off+5}/{off+5}");
             sb.AppendLine($"f {off+1}/{off+1}/{off+1} {off+5}/{off+5}/{off+5} {off+2}/{off+2}/{off+2}");
 
             return sb.ToString();
         }
 
-        private static GameObject CreatePinePrefab(string objPath)
+        private static GameObject CreatePinePrefab(string objPath, Material barkMat, Material needleMat)
         {
             GameObject objAsset = AssetDatabase.LoadAssetAtPath<GameObject>(objPath);
             string prefabPath = Path.Combine(PrefabsDir, "Prefab_AlpineSprucePine.prefab");
@@ -299,19 +330,10 @@ namespace TheAshenCrown.EditorTools
             GameObject instance = Object.Instantiate(objAsset);
             instance.name = "Prefab_AlpineSprucePine";
 
-            // Configure URP materials on submeshes
             MeshRenderer mr = instance.GetComponentInChildren<MeshRenderer>();
             if (mr != null)
             {
-                Shader lit = Shader.Find("Universal Render Pipeline/Lit");
-                Material bark = new Material(lit) { name = "Mat_PineTrunkBark", color = new Color(0.24f, 0.16f, 0.09f) };
-                bark.SetFloat("_Smoothness", 0.15f);
-
-                Material needles = new Material(lit) { name = "Mat_PineNeedles", color = new Color(0.12f, 0.28f, 0.14f) };
-                needles.SetFloat("_Smoothness", 0.25f);
-                needles.SetFloat("_Cull", 0); // Double-sided
-
-                mr.sharedMaterials = new Material[] { bark, needles };
+                mr.sharedMaterials = new Material[] { barkMat, needleMat };
             }
 
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(instance, prefabPath);
@@ -319,7 +341,7 @@ namespace TheAshenCrown.EditorTools
             return prefab;
         }
 
-        private static GameObject CreateRockPrefab(string objPath)
+        private static GameObject CreateRockPrefab(string objPath, Material rockMat)
         {
             GameObject objAsset = AssetDatabase.LoadAssetAtPath<GameObject>(objPath);
             string prefabPath = Path.Combine(PrefabsDir, "Prefab_GlacialBoulder.prefab");
@@ -330,10 +352,7 @@ namespace TheAshenCrown.EditorTools
             MeshRenderer mr = instance.GetComponentInChildren<MeshRenderer>();
             if (mr != null)
             {
-                Shader lit = Shader.Find("Universal Render Pipeline/Lit");
-                Material rock = new Material(lit) { name = "Mat_AlpineGranite", color = new Color(0.42f, 0.43f, 0.44f) };
-                rock.SetFloat("_Smoothness", 0.12f);
-                mr.sharedMaterial = rock;
+                mr.sharedMaterial = rockMat;
             }
 
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(instance, prefabPath);
@@ -341,7 +360,7 @@ namespace TheAshenCrown.EditorTools
             return prefab;
         }
 
-        private static GameObject CreateHousePrefab(string objPath)
+        private static GameObject CreateHousePrefab(string objPath, Material wallMat, Material thatchMat)
         {
             GameObject objAsset = AssetDatabase.LoadAssetAtPath<GameObject>(objPath);
             string prefabPath = Path.Combine(PrefabsDir, "Prefab_ThatchedCottage.prefab");
@@ -352,10 +371,7 @@ namespace TheAshenCrown.EditorTools
             MeshRenderer mr = instance.GetComponentInChildren<MeshRenderer>();
             if (mr != null)
             {
-                Shader lit = Shader.Find("Universal Render Pipeline/Lit");
-                Material wall = new Material(lit) { name = "Mat_CottageWall", color = new Color(0.60f, 0.55f, 0.47f) };
-                Material thatch = new Material(lit) { name = "Mat_ThatchedRoof", color = new Color(0.36f, 0.26f, 0.16f) };
-                mr.sharedMaterials = new Material[] { wall, thatch };
+                mr.sharedMaterials = new Material[] { wallMat, thatchMat };
             }
 
             GameObject prefab = PrefabUtility.SaveAsPrefabAsset(instance, prefabPath);
