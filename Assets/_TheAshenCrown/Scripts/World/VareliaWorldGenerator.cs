@@ -4,73 +4,75 @@ using System.Collections.Generic;
 using UnityEditor;
 #endif
 
+/// <summary>
+/// Celtic Mountain Valley & Medieval Village Generator for The Ashen Crown.
+/// Inspired by Kingdom Come, Manor Lords, and Celtic alpine valleys:
+/// - Glacial U-valley with winding pebble riverbed (Drake River)
+/// - Majestic alpine peaks with snow and cliff rock
+/// - Manor Lords style village with thatched cottages, chapel, and fenced farmland plots
+/// - Dense pine forests wrapping the valley hillsides
+/// - Weathered wooden fence posts and tree stumps
+/// - Automatic golden hour lighting & misty valley fog configuration
+/// </summary>
 public class VareliaWorldGenerator : MonoBehaviour
 {
-    [Header("Terrain Settings")]
+    [Header("Valley Dimensions")]
     public int mapSize = 2000;
     public int heightMapResolution = 513;
-    public int terrainHeight = 220;
-    public int seed = 12345;
+    public int maxMountainHeight = 260;
+    public int seed = 4321;
 
-    [Header("Vegetation")]
-    public GameObject treePrefab;
-    public GameObject rockPrefab;
-    public int treeCount = 750;
-    public int rockCount = 220;
+    [Header("Forest & Nature Density")]
+    public int pineTreeCount = 850;
+    public int riverRockCount = 180;
+    public int woodenFencePostCount = 120;
 
-    [Header("3D Grass Settings")]
-    public bool enableDetailGrass = true;
-    public int grassDensity = 6;
-    public float detailDistance = 75f;
+    [Header("Settlement (Dunmere)")]
+    public int villageCottageCount = 16;
+    public int farmlandPlotCount = 8;
 
-    [Header("Buildings")]
-    public GameObject housePrefab;
-    public GameObject fortPrefab;
-    public GameObject ruinPrefab;
-
-    [Header("Generation")]
-    public bool generateOnStart = false;
+    [Header("Lighting & Atmosphere")]
+    public bool autoConfigureCelticLighting = true;
 
     private Terrain terrain;
     private Transform worldRoot;
     private System.Random random;
 
-    // Medieval Materials Cache
-    private Material woodBarkMat;
-    private Material leafMat;
+    // Medieval Materials
+    private Material pineTrunkMat;
+    private Material pineNeedleMat;
+    private Material oakLeafMat;
     private Material rockMat;
-    private Material houseWallMat;
-    private Material houseRoofMat;
-    private Material fortStoneMat;
+    private Material cottageWallMat;
+    private Material thatchRoofMat;
+    private Material stoneChapelMat;
+    private Material fenceWoodMat;
 
-    // Important locations in Varelia
-    private Vector2 village = new Vector2(0, 0);
-    private Vector2 fort = new Vector2(650, 300);
-    private Vector2 ruins = new Vector2(-650, -450);
-    private Vector2 banditCamp = new Vector2(300, -650);
+    // Landmark coordinates
+    private Vector2 villageCenter = new Vector2(0, -60);
+    private Vector2 stoneFort = new Vector2(580, 320);
+    private Vector2 ancientRuins = new Vector2(-600, -420);
+    private Vector2 mountainCamp = new Vector2(350, -580);
 
-    private Vector2[] riverPoints =
+    // Winding Celtic Drake River (flows from north mountains down through the valley)
+    private Vector2[] riverPath =
     {
-        new Vector2(-1000, 500),
-        new Vector2(-650, 250),
-        new Vector2(-300, 100),
-        new Vector2(0, -100),
-        new Vector2(350, -250),
-        new Vector2(650, -500),
-        new Vector2(1000, -700)
+        new Vector2(-380, 950),
+        new Vector2(-280, 680),
+        new Vector2(-150, 420),
+        new Vector2(-60, 180),
+        new Vector2(-40, -40),
+        new Vector2(60, -260),
+        new Vector2(180, -520),
+        new Vector2(340, -780),
+        new Vector2(520, -980)
     };
 
-    private void Start()
-    {
-        if (generateOnStart)
-            GenerateWorld();
-    }
-
-    [ContextMenu("Generate Varelia World")]
+    [ContextMenu("Generate Celtic Valley & Village")]
     public void GenerateWorld()
     {
         random = new System.Random(seed);
-        InitMedievalMaterials();
+        InitMaterials();
 
         if (worldRoot != null)
         {
@@ -79,176 +81,132 @@ public class VareliaWorldGenerator : MonoBehaviour
         else
         {
             GameObject existing = GameObject.Find("VARELIA_GENERATED_WORLD");
-            if (existing != null)
-            {
-                DestroyImmediate(existing);
-            }
+            if (existing != null) DestroyImmediate(existing);
         }
 
-        Terrain[] existingTerrains = FindObjectsByType<Terrain>(FindObjectsSortMode.None);
-        foreach (Terrain t in existingTerrains)
+        // Clean up standalone terrain
+        Terrain[] oldTerrains = FindObjectsByType<Terrain>(FindObjectsSortMode.None);
+        foreach (Terrain t in oldTerrains)
         {
-            if (t.transform.parent == null)
-            {
-                DestroyImmediate(t.gameObject);
-            }
+            if (t.transform.parent == null) DestroyImmediate(t.gameObject);
         }
 
         worldRoot = new GameObject("VARELIA_GENERATED_WORLD").transform;
 
-        GenerateTerrain();
-        SetupTerrainTexturesAndSplatmap();
+        GenerateCelticValleyTerrain();
+        SetupTerrainSplatmaps();
+        GenerateRiver();
+        GenerateCelticRoads();
+        GenerateManorLordsVillage();
+        GenerateFortAndRuins();
+        GenerateDensePineForests();
+        GenerateFencePostsAndStumps();
+        PositionPlayerInVillage();
 
-        if (enableDetailGrass)
+        if (autoConfigureCelticLighting)
         {
-            Generate3DWavingGrass();
+            ConfigureCelticAtmosphere();
         }
 
-        GenerateRiver();
-        GenerateRoads();
-        GenerateSettlements();
-        GenerateVegetation();
-        GenerateLandmarks();
-        PositionPlayerAtVillage();
-
-        Debug.Log("Varelia living medieval world generation completed!");
+        Debug.Log("Celtic Mountain Valley & Manor Lords Village generated successfully!");
     }
 
-    private void InitMedievalMaterials()
+    private void InitMaterials()
     {
         Shader litShader = Shader.Find("Universal Render Pipeline/Lit");
         if (litShader == null) litShader = Shader.Find("Standard");
 
-        woodBarkMat = new Material(litShader) { name = "Mat_WoodBark" };
-        woodBarkMat.color = new Color(0.24f, 0.15f, 0.08f);
-
-        leafMat = new Material(litShader) { name = "Mat_ForestLeaves" };
-        leafMat.color = new Color(0.14f, 0.35f, 0.14f);
-
-        rockMat = new Material(litShader) { name = "Mat_GraniteRock" };
-        rockMat.color = new Color(0.38f, 0.39f, 0.40f);
-
-        houseWallMat = new Material(litShader) { name = "Mat_HouseTimber" };
-        houseWallMat.color = new Color(0.55f, 0.50f, 0.44f);
-
-        houseRoofMat = new Material(litShader) { name = "Mat_ThatchRoof" };
-        houseRoofMat.color = new Color(0.38f, 0.24f, 0.15f);
-
-        fortStoneMat = new Material(litShader) { name = "Mat_FortressStone" };
-        fortStoneMat.color = new Color(0.32f, 0.33f, 0.35f);
+        pineTrunkMat = new Material(litShader) { name = "Mat_PineTrunk", color = new Color(0.20f, 0.13f, 0.08f) };
+        pineNeedleMat = new Material(litShader) { name = "Mat_PineNeedle", color = new Color(0.12f, 0.28f, 0.15f) };
+        oakLeafMat = new Material(litShader) { name = "Mat_OakLeaves", color = new Color(0.20f, 0.42f, 0.18f) };
+        rockMat = new Material(litShader) { name = "Mat_AlpineRock", color = new Color(0.36f, 0.37f, 0.38f) };
+        cottageWallMat = new Material(litShader) { name = "Mat_CottagePlaster", color = new Color(0.58f, 0.53f, 0.45f) };
+        thatchRoofMat = new Material(litShader) { name = "Mat_ThatchedStraw", color = new Color(0.36f, 0.26f, 0.16f) };
+        stoneChapelMat = new Material(litShader) { name = "Mat_AshlarStone", color = new Color(0.32f, 0.33f, 0.35f) };
+        fenceWoodMat = new Material(litShader) { name = "Mat_WeatheredPost", color = new Color(0.28f, 0.22f, 0.17f) };
     }
 
-    void GenerateTerrain()
+    void GenerateCelticValleyTerrain()
     {
         TerrainData data = new TerrainData();
-
         data.heightmapResolution = heightMapResolution;
-        data.size = new Vector3(mapSize, terrainHeight, mapSize);
+        data.size = new Vector3(mapSize, maxMountainHeight, mapSize);
 
-        float[,] heights = new float[
-            heightMapResolution,
-            heightMapResolution
-        ];
+        float[,] heights = new float[heightMapResolution, heightMapResolution];
 
         for (int z = 0; z < heightMapResolution; z++)
         {
             for (int x = 0; x < heightMapResolution; x++)
             {
-                float worldX = (float)x / (heightMapResolution - 1)
-                    * mapSize - mapSize / 2f;
+                float worldX = (float)x / (heightMapResolution - 1) * mapSize - mapSize * 0.5f;
+                float worldZ = (float)z / (heightMapResolution - 1) * mapSize - mapSize * 0.5f;
 
-                float worldZ = (float)z / (heightMapResolution - 1)
-                    * mapSize - mapSize / 2f;
+                // 1. Broad U-Valley Shape (East and West borders rise into towering alpine peaks)
+                float valleyCrossFactor = Mathf.Abs(worldX) / (mapSize * 0.5f);
+                float mountainRise = Mathf.Pow(valleyCrossFactor, 2.2f) * 0.65f;
 
-                float noise = Mathf.PerlinNoise(
-                    (worldX + seed) * 0.002f,
-                    (worldZ + seed) * 0.002f
-                );
+                // Also add north/south mountain ridges
+                float northSouthDist = Mathf.Abs(worldZ) / (mapSize * 0.5f);
+                if (northSouthDist > 0.65f)
+                {
+                    mountainRise += Mathf.Pow(Mathf.InverseLerp(0.65f, 1.0f, northSouthDist), 2f) * 0.35f;
+                }
 
-                float detail = Mathf.PerlinNoise(
-                    (worldX + seed) * 0.008f,
-                    (worldZ + seed) * 0.008f
-                );
+                // 2. Alpine Jagged Ridge Noise (Sharp glacial ridges, not rounded hills!)
+                float ridgeNoise = Mathf.PerlinNoise((worldX + seed) * 0.0035f, (worldZ + seed) * 0.0035f);
+                float sharpRidge = 1.0f - Mathf.Abs(ridgeNoise * 2.0f - 1.0f);
+                sharpRidge = Mathf.Pow(sharpRidge, 2.2f) * 0.35f * valleyCrossFactor;
 
-                float mountainDistance = Mathf.Max(
-                    Mathf.Abs(worldX),
-                    Mathf.Abs(worldZ)
-                );
+                // 3. Gentle rolling meadow noise for the valley floor
+                float valleyMeadow = Mathf.PerlinNoise((worldX + seed + 200f) * 0.006f, (worldZ + seed + 200f) * 0.006f) * 0.045f;
 
-                float mountains = Mathf.InverseLerp(
-                    650f, 1000f, mountainDistance
-                );
+                float finalHeight = 0.08f + mountainRise + sharpRidge + valleyMeadow;
 
-                float height =
-                    0.09f +
-                    noise * 0.15f +
-                    detail * 0.035f +
-                    mountains * 0.35f;
+                // 4. Flatten Village settlement area
+                finalHeight = FlattenZone(finalHeight, worldX, worldZ, villageCenter, 220f, 0.095f);
+                finalHeight = FlattenZone(finalHeight, worldX, worldZ, stoneFort, 120f, 0.16f);
+                finalHeight = FlattenZone(finalHeight, worldX, worldZ, ancientRuins, 75f, 0.12f);
 
-                height = Flatten(height, worldX, worldZ, village, 170f, 0.12f);
-                height = Flatten(height, worldX, worldZ, fort, 110f, 0.19f);
-                height = Flatten(height, worldX, worldZ, ruins, 65f, 0.14f);
-                height = Flatten(height, worldX, worldZ, banditCamp, 60f, 0.12f);
+                // 5. Carve the Drake Riverbed
+                float distToRiver = DistanceToRiver(worldX, worldZ);
+                if (distToRiver < 55f)
+                {
+                    float riverGully = Mathf.Exp(-(distToRiver * distToRiver) / 380f) * 0.038f;
+                    finalHeight -= riverGully;
+                }
 
-                float riverDistance = DistanceToRiver(worldX, worldZ);
-                float riverCarve = Mathf.Exp(-(riverDistance * riverDistance) / 1800f);
-                height -= riverCarve * 0.055f;
-
-                heights[z, x] = Mathf.Clamp01(height);
+                heights[z, x] = Mathf.Clamp01(finalHeight);
             }
         }
 
         data.SetHeights(0, 0, heights);
 
         GameObject terrainObject = Terrain.CreateTerrainGameObject(data);
-        terrainObject.name = "Varelia_Terrain";
-        terrainObject.transform.position = new Vector3(-mapSize / 2f, 0, -mapSize / 2f);
+        terrainObject.name = "Celtic_Valley_Terrain";
+        terrainObject.transform.position = new Vector3(-mapSize * 0.5f, 0, -mapSize * 0.5f);
         terrainObject.transform.SetParent(worldRoot);
 
         terrain = terrainObject.GetComponent<Terrain>();
-        terrain.heightmapPixelError = 6;
-        terrain.basemapDistance = 800;
-        terrain.detailObjectDistance = detailDistance;
-        terrain.detailObjectDensity = 1.0f;
+        terrain.heightmapPixelError = 5;
+        terrain.basemapDistance = 900;
+        terrain.detailObjectDistance = 80;
     }
 
-    void SetupTerrainTexturesAndSplatmap()
+    void SetupTerrainSplatmaps()
     {
 #if UNITY_EDITOR
         TerrainData tData = terrain.terrainData;
 
         Texture2D grassTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/GrassBushyThick_Albedo.tif");
         Texture2D grassNormal = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/GrassBushyThick_Normal.tif");
-
         Texture2D dirtTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/SandWavey_Albedo.tif");
         Texture2D dirtNormal = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/SandWavey_Normal.tif");
-
         Texture2D rockTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/Moon_Albedo.png");
         Texture2D rockNormal = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/Moon_Normal.png");
 
-        TerrainLayer grassLayer = new TerrainLayer
-        {
-            name = "Layer_MeadowGrass",
-            diffuseTexture = grassTex,
-            normalMapTexture = grassNormal,
-            tileSize = new Vector2(8f, 8f)
-        };
-
-        TerrainLayer dirtLayer = new TerrainLayer
-        {
-            name = "Layer_DirtRoad",
-            diffuseTexture = dirtTex,
-            normalMapTexture = dirtNormal,
-            tileSize = new Vector2(10f, 10f)
-        };
-
-        TerrainLayer rockLayer = new TerrainLayer
-        {
-            name = "Layer_MountainRock",
-            diffuseTexture = rockTex,
-            normalMapTexture = rockNormal,
-            tileSize = new Vector2(16f, 16f)
-        };
+        TerrainLayer grassLayer = new TerrainLayer { name = "Alpine_Meadow", diffuseTexture = grassTex, normalMapTexture = grassNormal, tileSize = new Vector2(7f, 7f) };
+        TerrainLayer dirtLayer = new TerrainLayer { name = "Tilled_Dirt", diffuseTexture = dirtTex, normalMapTexture = dirtNormal, tileSize = new Vector2(9f, 9f) };
+        TerrainLayer rockLayer = new TerrainLayer { name = "Mountain_Cliff", diffuseTexture = rockTex, normalMapTexture = rockNormal, tileSize = new Vector2(16f, 16f) };
 
         tData.terrainLayers = new TerrainLayer[] { grassLayer, dirtLayer, rockLayer };
 
@@ -263,34 +221,41 @@ public class VareliaWorldGenerator : MonoBehaviour
                 float normX = (float)x / (alphaW - 1);
                 float normZ = (float)z / (alphaH - 1);
 
-                float worldX = normX * mapSize - mapSize / 2f;
-                float worldZ = normZ * mapSize - mapSize / 2f;
+                float worldX = normX * mapSize - mapSize * 0.5f;
+                float worldZ = normZ * mapSize - mapSize * 0.5f;
 
                 float steepness = tData.GetSteepness(normX, normZ);
-                float roadDist = DistanceToRoad(new Vector2(worldX, worldZ));
+                float roadDist = DistanceToRoads(new Vector2(worldX, worldZ));
                 float riverDist = DistanceToRiver(worldX, worldZ);
+                float villageDist = Vector2.Distance(new Vector2(worldX, worldZ), villageCenter);
 
                 float grassWeight = 1f;
                 float dirtWeight = 0f;
                 float rockWeight = 0f;
 
-                // 1. Mountain cliffs get rugged stone
-                if (steepness > 26f)
+                // Alpine steep cliff walls
+                if (steepness > 24f)
                 {
-                    rockWeight = Mathf.InverseLerp(24f, 40f, steepness);
+                    rockWeight = Mathf.InverseLerp(22f, 38f, steepness);
                     grassWeight = 1f - rockWeight;
                 }
 
-                // 2. Roads and riverbanks get packed dirt
-                if (roadDist < 9f)
+                // Packed dirt roads & village square
+                if (roadDist < 7.5f)
                 {
-                    dirtWeight = Mathf.InverseLerp(9f, 2f, roadDist);
+                    dirtWeight = Mathf.InverseLerp(7.5f, 1.5f, roadDist);
                     grassWeight *= (1f - dirtWeight);
                     rockWeight *= (1f - dirtWeight);
                 }
-                else if (riverDist < 26f)
+                else if (villageDist < 60f)
                 {
-                    dirtWeight = Mathf.InverseLerp(26f, 10f, riverDist) * 0.85f;
+                    dirtWeight = Mathf.InverseLerp(60f, 20f, villageDist) * 0.7f;
+                    grassWeight *= (1f - dirtWeight);
+                    rockWeight *= (1f - dirtWeight);
+                }
+                else if (riverDist < 22f)
+                {
+                    dirtWeight = Mathf.InverseLerp(22f, 8f, riverDist) * 0.9f;
                     grassWeight *= (1f - dirtWeight);
                     rockWeight *= (1f - dirtWeight);
                 }
@@ -305,161 +270,48 @@ public class VareliaWorldGenerator : MonoBehaviour
 #endif
     }
 
-    void Generate3DWavingGrass()
-    {
-#if UNITY_EDITOR
-        TerrainData tData = terrain.terrainData;
-
-        Texture2D grassDetailTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/Tile_Grass.png");
-        Texture2D flowerDetailTex = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SourceFiles/Textures/Repeating Tiles/Tile_GrassFlowers.png");
-
-        if (grassDetailTex == null) return;
-
-        DetailPrototype grassProto = new DetailPrototype
-        {
-            prototypeTexture = grassDetailTex,
-            renderMode = DetailRenderMode.GrassBillboard,
-            minWidth = 1.0f,
-            maxWidth = 1.6f,
-            minHeight = 0.8f,
-            maxHeight = 1.4f,
-            healthyColor = new Color(0.25f, 0.55f, 0.22f),
-            dryColor = new Color(0.48f, 0.44f, 0.24f)
-        };
-
-        DetailPrototype flowerProto = new DetailPrototype
-        {
-            prototypeTexture = flowerDetailTex != null ? flowerDetailTex : grassDetailTex,
-            renderMode = DetailRenderMode.GrassBillboard,
-            minWidth = 0.9f,
-            maxWidth = 1.4f,
-            minHeight = 0.7f,
-            maxHeight = 1.2f,
-            healthyColor = new Color(0.35f, 0.65f, 0.32f),
-            dryColor = new Color(0.55f, 0.50f, 0.30f)
-        };
-
-        tData.detailPrototypes = new DetailPrototype[] { grassProto, flowerProto };
-
-        // Wind sway
-        tData.wavingGrassStrength = 0.38f;
-        tData.wavingGrassAmount = 0.35f;
-        tData.wavingGrassSpeed = 0.28f;
-        tData.wavingGrassTint = new Color(0.7f, 0.65f, 0.45f);
-
-        int detailRes = tData.detailResolution;
-        int[,] grassMap = new int[detailRes, detailRes];
-        int[,] flowerMap = new int[detailRes, detailRes];
-
-        for (int z = 0; z < detailRes; z++)
-        {
-            for (int x = 0; x < detailRes; x++)
-            {
-                float normX = (float)x / (detailRes - 1);
-                float normZ = (float)z / (detailRes - 1);
-
-                float worldX = normX * mapSize - mapSize / 2f;
-                float worldZ = normZ * mapSize - mapSize / 2f;
-
-                float steepness = tData.GetSteepness(normX, normZ);
-                float roadDist = DistanceToRoad(new Vector2(worldX, worldZ));
-                float riverDist = DistanceToRiver(worldX, worldZ);
-
-                // No grass on roads, in the river channel, or on cliffs
-                if (roadDist < 7f || riverDist < 20f || steepness > 22f)
-                {
-                    grassMap[z, x] = 0;
-                    flowerMap[z, x] = 0;
-                    continue;
-                }
-
-                // Noise-based natural meadow grass clumps
-                float noise = Mathf.PerlinNoise(worldX * 0.025f, worldZ * 0.025f);
-                if (noise > 0.45f)
-                {
-                    grassMap[z, x] = Mathf.RoundToInt(Mathf.Lerp(2, grassDensity, (noise - 0.45f) * 2f));
-                    if (noise > 0.68f)
-                    {
-                        flowerMap[z, x] = Mathf.RoundToInt(Random.Range(1, 3));
-                    }
-                }
-            }
-        }
-
-        tData.SetDetailLayer(0, 0, 0, grassMap);
-        tData.SetDetailLayer(0, 0, 1, flowerMap);
-#endif
-    }
-
-    float Flatten(float original, float x, float z, Vector2 center, float radius, float targetHeight)
-    {
-        float distance = Vector2.Distance(new Vector2(x, z), center);
-        float blend = 1f - Mathf.SmoothStep(radius * 0.65f, radius, distance);
-        return Mathf.Lerp(original, targetHeight, blend);
-    }
-
-    float DistanceToRiver(float x, float z)
-    {
-        float minimum = float.MaxValue;
-        foreach (Vector2 point in riverPoints)
-        {
-            float distance = Vector2.Distance(new Vector2(x, z), point);
-            minimum = Mathf.Min(minimum, distance);
-        }
-        return minimum;
-    }
-
-    float GetGroundHeight(float x, float z)
-    {
-        Vector3 worldPosition = new Vector3(x, 0, z);
-        return terrain.SampleHeight(worldPosition);
-    }
-
     void GenerateRiver()
     {
-        CreateLine("River", riverPoints, 22f, new Color(0.18f, 0.42f, 0.65f));
+        CreateLineRenderer("Drake_River", riverPath, 20f, new Color(0.20f, 0.44f, 0.62f), 0.4f);
     }
 
-    void GenerateRoads()
+    void GenerateCelticRoads()
     {
-        Vector2[] mainRoad =
+        Vector2[] southVillageRoad =
         {
-            new Vector2(-950, -850),
-            new Vector2(-600, -500),
-            new Vector2(-250, -200),
-            village,
-            new Vector2(300, 100),
-            fort
+            new Vector2(-400, -800),
+            new Vector2(-220, -500),
+            new Vector2(-80, -250),
+            villageCenter
         };
+        CreateLineRenderer("South_Valley_Road", southVillageRoad, 8f, new Color(0.38f, 0.30f, 0.19f), 0.35f);
 
-        CreateLine("Main_Road", mainRoad, 9f, new Color(0.36f, 0.28f, 0.18f));
-
-        Vector2[] forestRoad =
+        Vector2[] fortRoad =
         {
-            village,
-            new Vector2(-250, 250),
-            ruins
+            villageCenter,
+            new Vector2(160, 40),
+            new Vector2(340, 160),
+            stoneFort
         };
+        CreateLineRenderer("Fort_Ascent_Road", fortRoad, 7.5f, new Color(0.36f, 0.28f, 0.18f), 0.35f);
 
-        CreateLine("Forest_Road", forestRoad, 7f, new Color(0.40f, 0.32f, 0.20f));
-
-        Vector2[] campRoad =
+        Vector2[] ruinsRoad =
         {
-            village,
-            new Vector2(150, -350),
-            banditCamp
+            villageCenter,
+            new Vector2(-220, -180),
+            new Vector2(-420, -320),
+            ancientRuins
         };
-
-        CreateLine("Bandit_Road", campRoad, 6f, new Color(0.35f, 0.26f, 0.17f));
+        CreateLineRenderer("Ruins_Trail", ruinsRoad, 6f, new Color(0.34f, 0.26f, 0.16f), 0.35f);
     }
 
-    void CreateLine(string objectName, Vector2[] points, float width, Color color)
+    void CreateLineRenderer(string objName, Vector2[] pts, float width, Color col, float yOffset)
     {
-        GameObject lineObject = new GameObject(objectName);
-        lineObject.transform.SetParent(worldRoot);
+        GameObject lineObj = new GameObject(objName);
+        lineObj.transform.SetParent(worldRoot);
 
-        LineRenderer line = lineObject.AddComponent<LineRenderer>();
-        line.positionCount = points.Length;
+        LineRenderer line = lineObj.AddComponent<LineRenderer>();
+        line.positionCount = pts.Length;
         line.startWidth = width;
         line.endWidth = width;
         line.useWorldSpace = true;
@@ -467,238 +319,277 @@ public class VareliaWorldGenerator : MonoBehaviour
         Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
         if (shader == null) shader = Shader.Find("Sprites/Default");
         line.material = new Material(shader);
+        line.startColor = col;
+        line.endColor = col;
 
-        line.startColor = color;
-        line.endColor = color;
-
-        for (int i = 0; i < points.Length; i++)
+        for (int i = 0; i < pts.Length; i++)
         {
-            Vector3 position = new Vector3(
-                points[i].x,
-                GetGroundHeight(points[i].x, points[i].y) + 0.6f,
-                points[i].y
-            );
-
-            line.SetPosition(i, position);
+            float surfaceY = terrain.SampleHeight(new Vector3(pts[i].x, 0, pts[i].y));
+            line.SetPosition(i, new Vector3(pts[i].x, surfaceY + yOffset, pts[i].y));
         }
     }
 
-    void GenerateSettlements()
+    void GenerateManorLordsVillage()
     {
-        CreateVillage(village);
-        CreateFort(fort);
-    }
+        // 1. Dunmere Chapel & Stone Belfry (The focal point of the story!)
+        Vector3 chapelPos = new Vector3(villageCenter.x - 25f, 0, villageCenter.y + 35f);
+        chapelPos.y = terrain.SampleHeight(chapelPos);
+        CreateBuildingModel("Dunmere_Stone_Chapel", chapelPos, new Vector3(18f, 14f, 26f), stoneChapelMat, thatchRoofMat);
 
-    void CreateVillage(Vector2 center)
-    {
-        for (int i = 0; i < 12; i++)
+        // Chapel Bell Tower
+        Vector3 towerPos = chapelPos + new Vector3(12f, 0f, -8f);
+        towerPos.y = terrain.SampleHeight(towerPos);
+        CreateBuildingModel("Chapel_BellTower", towerPos, new Vector3(8f, 28f, 8f), stoneChapelMat, thatchRoofMat);
+
+        // 2. Village Cottages along organic road curves
+        for (int i = 0; i < villageCottageCount; i++)
         {
-            float angle = i * Mathf.PI * 2f / 12f;
-            Vector2 position = center + new Vector2(Mathf.Cos(angle) * 65f, Mathf.Sin(angle) * 65f);
-            CreateBuilding("Village_House_" + i, position, housePrefab, new Vector3(12, 8, 12), houseWallMat, houseRoofMat);
+            float side = (i % 2 == 0) ? 1f : -1f;
+            float rowOffset = (i / 2) * 22f - 70f;
+            float lateralOffset = side * (32f + (float)random.NextDouble() * 18f);
+
+            Vector2 cottageCoord = villageCenter + new Vector2(lateralOffset, rowOffset);
+            Vector3 pos = new Vector3(cottageCoord.x, 0, cottageCoord.y);
+            pos.y = terrain.SampleHeight(pos);
+
+            float houseWidth = 10f + (float)random.NextDouble() * 4f;
+            float houseLength = 12f + (float)random.NextDouble() * 5f;
+            CreateBuildingModel("Cottage_" + i, pos, new Vector3(houseWidth, 7f, houseLength), cottageWallMat, thatchRoofMat);
         }
 
-        CreateBuilding("Village_Center_Hall", center, housePrefab, new Vector3(20, 12, 18), houseWallMat, houseRoofMat);
-    }
-
-    void CreateFort(Vector2 center)
-    {
-        CreateBuilding("Stonewatch_Fort", center, fortPrefab, new Vector3(70, 32, 70), fortStoneMat, null);
-
-        for (int i = 0; i < 4; i++)
+        // 3. Fenced Farmland Plots around village perimeter (Manor Lords style fields!)
+        for (int p = 0; p < farmlandPlotCount; p++)
         {
-            Vector2 position = center + new Vector2(i % 2 == 0 ? -45 : 45, i < 2 ? -45 : 45);
-            CreateBuilding("Fort_Tower_" + i, position, null, new Vector3(12, 34, 12), fortStoneMat, null);
-        }
-    }
+            float angle = p * (Mathf.PI * 2f / farmlandPlotCount);
+            float radius = 125f + (float)random.NextDouble() * 35f;
+            Vector2 plotCenter = villageCenter + new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
 
-    void GenerateLandmarks()
-    {
-        CreateBuilding("Abandoned_Ruins", ruins, ruinPrefab, new Vector3(45, 14, 45), fortStoneMat, null);
-        CreateBuilding("Bandit_Camp", banditCamp, null, new Vector3(26, 7, 26), woodBarkMat, null);
-    }
-
-    void GenerateVegetation()
-    {
-        for (int i = 0; i < treeCount; i++)
-        {
-            float x = RandomCoordinate();
-            float z = RandomCoordinate();
-
-            Vector2 position = new Vector2(x, z);
-
-            if (Vector2.Distance(position, village) < 180f) continue;
-            if (Vector2.Distance(position, fort) < 120f) continue;
-            if (Vector2.Distance(position, ruins) < 85f) continue;
-            if (Vector2.Distance(position, banditCamp) < 85f) continue;
-            if (DistanceToRiver(x, z) < 35f) continue;
-            if (DistanceToRoad(position) < 16f) continue;
-
-            float steepness = terrain.terrainData.GetSteepness(
-                (x + mapSize / 2f) / mapSize,
-                (z + mapSize / 2f) / mapSize
-            );
-
-            if (steepness > 28f) continue;
-
-            CreateTree(x, z);
-        }
-
-        for (int i = 0; i < rockCount; i++)
-        {
-            float x = RandomCoordinate();
-            float z = RandomCoordinate();
-
-            if (DistanceToRiver(x, z) < 30f) continue;
-
-            CreateRock(x, z);
+            CreateFarmlandPlot(plotCenter, 38f, 48f);
         }
     }
 
-    float RandomCoordinate()
+    void CreateFarmlandPlot(Vector2 center, float width, float length)
     {
-        return (float)random.NextDouble() * mapSize - mapSize / 2f;
-    }
+        Vector3 plotPos = new Vector3(center.x, 0, center.y);
+        plotPos.y = terrain.SampleHeight(plotPos);
 
-    float DistanceToRoad(Vector2 point)
-    {
-        return Mathf.Min(
-            DistanceToPolyline(point, new Vector2[]
-            {
-                new Vector2(-950, -850),
-                new Vector2(-600, -500),
-                new Vector2(-250, -200),
-                village,
-                new Vector2(300, 100),
-                fort
-            }),
-            DistanceToPolyline(point, new Vector2[]
-            {
-                village,
-                new Vector2(-250, 250),
-                ruins
-            }),
-            DistanceToPolyline(point, new Vector2[]
-            {
-                village,
-                new Vector2(150, -350),
-                banditCamp
-            })
-        );
-    }
+        GameObject field = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        field.name = "Fenced_Field_Plot";
+        field.transform.SetParent(worldRoot);
+        field.transform.position = plotPos + Vector3.up * 0.1f;
+        field.transform.localScale = new Vector3(width, 0.2f, length);
+        if (fenceWoodMat != null) field.GetComponent<MeshRenderer>().sharedMaterial = fenceWoodMat;
 
-    float DistanceToPolyline(Vector2 point, Vector2[] path)
-    {
-        float minimum = float.MaxValue;
-        foreach (Vector2 p in path)
+        // Add 4 corner wooden fence posts
+        Vector2[] corners =
         {
-            minimum = Mathf.Min(minimum, Vector2.Distance(point, p));
+            new Vector2(-width*0.5f, -length*0.5f),
+            new Vector2(width*0.5f, -length*0.5f),
+            new Vector2(width*0.5f, length*0.5f),
+            new Vector2(-width*0.5f, length*0.5f)
+        };
+
+        foreach (var c in corners)
+        {
+            Vector3 postPos = new Vector3(center.x + c.x, 0, center.y + c.y);
+            postPos.y = terrain.SampleHeight(postPos);
+            CreateFencePost(postPos);
         }
-        return minimum;
     }
 
-    void CreateTree(float x, float z)
+    void CreateFencePost(Vector3 pos)
     {
-        Vector3 position = new Vector3(x, GetGroundHeight(x, z), z);
+        GameObject post = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        post.name = "Fence_Post";
+        post.transform.SetParent(worldRoot);
+        post.transform.position = pos + Vector3.up * 1.1f;
+        post.transform.localScale = new Vector3(0.25f, 1.1f, 0.25f);
+        if (fenceWoodMat != null) post.GetComponent<MeshRenderer>().sharedMaterial = fenceWoodMat;
+        DestroyImmediate(post.GetComponent<Collider>());
+    }
 
-        if (treePrefab != null)
+    void GenerateFortAndRuins()
+    {
+        Vector3 fortPos = new Vector3(stoneFort.x, 0, stoneFort.y);
+        fortPos.y = terrain.SampleHeight(fortPos);
+        CreateBuildingModel("Stonewatch_Keep", fortPos, new Vector3(65f, 28f, 65f), stoneChapelMat, null);
+
+        Vector3 ruinPos = new Vector3(ancientRuins.x, 0, ancientRuins.y);
+        ruinPos.y = terrain.SampleHeight(ruinPos);
+        CreateBuildingModel("Forgotten_Ruins_Crypt", ruinPos, new Vector3(40f, 12f, 40f), stoneChapelMat, null);
+    }
+
+    void CreateBuildingModel(string name, Vector3 pos, Vector3 size, Material wallMat, Material roofMat)
+    {
+        GameObject bld = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        bld.name = name;
+        bld.transform.SetParent(worldRoot);
+        bld.transform.position = pos + Vector3.up * size.y * 0.5f;
+        bld.transform.localScale = size;
+        if (wallMat != null) bld.GetComponent<MeshRenderer>().sharedMaterial = wallMat;
+
+        if (roofMat != null)
         {
-            GameObject tree = Instantiate(treePrefab, position, Quaternion.Euler(0, random.Next(360), 0), worldRoot);
-            tree.transform.localScale *= Random.Range(0.85f, 1.4f);
+            GameObject roof = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            roof.name = "Pitched_Roof";
+            roof.transform.SetParent(bld.transform);
+            roof.transform.localPosition = new Vector3(0, 0.62f, 0);
+            roof.transform.localScale = new Vector3(1.1f, 0.38f, 1.1f);
+            roof.transform.localRotation = Quaternion.identity;
+            roof.GetComponent<MeshRenderer>().sharedMaterial = roofMat;
         }
-        else
+    }
+
+    void GenerateDensePineForests()
+    {
+        for (int i = 0; i < pineTreeCount; i++)
         {
-            GameObject treeObj = new GameObject("Medieval_Tree");
-            treeObj.transform.SetParent(worldRoot);
-            treeObj.transform.position = position;
+            float x = (float)random.NextDouble() * mapSize - mapSize * 0.5f;
+            float z = (float)random.NextDouble() * mapSize - mapSize * 0.5f;
+            Vector2 pt = new Vector2(x, z);
+
+            if (Vector2.Distance(pt, villageCenter) < 165f) continue;
+            if (Vector2.Distance(pt, stoneFort) < 110f) continue;
+            if (Vector2.Distance(pt, ancientRuins) < 70f) continue;
+            if (DistanceToRiver(x, z) < 28f) continue;
+            if (DistanceToRoads(pt) < 14f) continue;
+
+            float steepness = terrain.terrainData.GetSteepness((x + mapSize * 0.5f) / mapSize, (z + mapSize * 0.5f) / mapSize);
+            if (steepness > 32f) continue;
+
+            Vector3 treePos = new Vector3(x, terrain.SampleHeight(new Vector3(x, 0, z)), z);
+
+            // Tall Mountain Pine
+            GameObject pine = new GameObject("Celtic_Pine");
+            pine.transform.SetParent(worldRoot);
+            pine.transform.position = treePos;
 
             // Trunk
             GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            trunk.name = "Trunk";
-            trunk.transform.SetParent(treeObj.transform);
-            trunk.transform.localPosition = new Vector3(0, 3.5f, 0);
-            trunk.transform.localScale = new Vector3(0.9f, 3.5f, 0.9f);
-            if (woodBarkMat != null) trunk.GetComponent<MeshRenderer>().sharedMaterial = woodBarkMat;
+            trunk.transform.SetParent(pine.transform);
+            trunk.transform.localPosition = new Vector3(0, 4.5f, 0);
+            trunk.transform.localScale = new Vector3(0.7f, 4.5f, 0.7f);
+            if (pineTrunkMat != null) trunk.GetComponent<MeshRenderer>().sharedMaterial = pineTrunkMat;
 
-            // Foliage Canopy
-            GameObject leaves = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            leaves.name = "Leaves";
-            leaves.transform.SetParent(treeObj.transform);
-            leaves.transform.localPosition = new Vector3(0, 7.5f, 0);
-            leaves.transform.localScale = new Vector3(3.8f, 3.6f, 3.8f);
-            if (leafMat != null) leaves.GetComponent<MeshRenderer>().sharedMaterial = leafMat;
-
-            treeObj.transform.localScale *= Random.Range(0.85f, 1.35f);
-            treeObj.transform.localRotation = Quaternion.Euler(0, random.Next(360), 0);
-        }
-    }
-
-    void CreateRock(float x, float z)
-    {
-        Vector3 position = new Vector3(x, GetGroundHeight(x, z), z);
-        GameObject rock;
-
-        if (rockPrefab != null)
-        {
-            rock = Instantiate(rockPrefab, position, Quaternion.identity, worldRoot);
-        }
-        else
-        {
-            rock = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            rock.transform.SetParent(worldRoot);
-            rock.transform.position = position;
-            if (rockMat != null) rock.GetComponent<MeshRenderer>().sharedMaterial = rockMat;
-        }
-
-        rock.name = "Granite_Rock";
-        rock.transform.localScale = new Vector3(
-            Random.Range(1.8f, 4.5f),
-            Random.Range(1.2f, 3.2f),
-            Random.Range(1.8f, 4.5f)
-        );
-        rock.transform.localRotation = Quaternion.Euler(Random.Range(0, 30), random.Next(360), Random.Range(0, 30));
-    }
-
-    void CreateBuilding(string objectName, Vector2 location, GameObject prefab, Vector3 size, Material wallMat, Material roofMat)
-    {
-        Vector3 position = new Vector3(location.x, GetGroundHeight(location.x, location.y), location.y);
-        GameObject building;
-
-        if (prefab != null)
-        {
-            building = Instantiate(prefab, position, Quaternion.identity, worldRoot);
-        }
-        else
-        {
-            building = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            building.transform.SetParent(worldRoot);
-            building.transform.position = position + Vector3.up * size.y / 2f;
-            building.transform.localScale = size;
-            if (wallMat != null) building.GetComponent<MeshRenderer>().sharedMaterial = wallMat;
-
-            // Add simple roof prism if roof material provided
-            if (roofMat != null)
+            // Conical Pine Foliage (3 tiered cones)
+            for (int t = 0; t < 3; t++)
             {
-                GameObject roof = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                roof.name = "Roof";
-                roof.transform.SetParent(building.transform);
-                roof.transform.localPosition = new Vector3(0, 0.65f, 0);
-                roof.transform.localScale = new Vector3(1.1f, 0.35f, 1.1f);
-                roof.transform.localRotation = Quaternion.identity;
-                roof.GetComponent<MeshRenderer>().sharedMaterial = roofMat;
+                GameObject cone = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                cone.transform.SetParent(pine.transform);
+                cone.transform.localPosition = new Vector3(0, 7f + (t * 2.8f), 0);
+                float radius = 3.8f - (t * 0.9f);
+                cone.transform.localScale = new Vector3(radius, 2.5f, radius);
+                if (pineNeedleMat != null) cone.GetComponent<MeshRenderer>().sharedMaterial = pineNeedleMat;
+            }
+
+            pine.transform.localScale *= Random.Range(0.85f, 1.4f);
+            pine.transform.localRotation = Quaternion.Euler(0, random.Next(360), 0);
+        }
+
+        // River Rocks
+        for (int r = 0; r < riverRockCount; r++)
+        {
+            float x = (float)random.NextDouble() * mapSize - mapSize * 0.5f;
+            float z = (float)random.NextDouble() * mapSize - mapSize * 0.5f;
+
+            // Cluster rocks along riverbanks
+            if (DistanceToRiver(x, z) < 45f && DistanceToRiver(x, z) > 12f)
+            {
+                Vector3 rPos = new Vector3(x, terrain.SampleHeight(new Vector3(x, 0, z)), z);
+                GameObject rock = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                rock.name = "River_Boulder";
+                rock.transform.SetParent(worldRoot);
+                rock.transform.position = rPos;
+                rock.transform.localScale = new Vector3(Random.Range(1.8f, 4.5f), Random.Range(1f, 2.5f), Random.Range(1.8f, 4.5f));
+                if (rockMat != null) rock.GetComponent<MeshRenderer>().sharedMaterial = rockMat;
             }
         }
-
-        building.name = objectName;
     }
 
-    void PositionPlayerAtVillage()
+    void GenerateFencePostsAndStumps()
+    {
+        for (int f = 0; f < woodenFencePostCount; f++)
+        {
+            float angle = (float)random.NextDouble() * Mathf.PI * 2f;
+            float r = 70f + (float)random.NextDouble() * 110f;
+            Vector2 postCoord = villageCenter + new Vector2(Mathf.Cos(angle) * r, Mathf.Sin(angle) * r);
+
+            Vector3 postPos = new Vector3(postCoord.x, terrain.SampleHeight(new Vector3(postCoord.x, 0, postCoord.y)), postCoord.y);
+            CreateFencePost(postPos);
+        }
+    }
+
+    void PositionPlayerInVillage()
     {
         GameObject player = GameObject.Find("Player");
         if (player != null && terrain != null)
         {
-            float groundY = terrain.SampleHeight(new Vector3(village.x, 0, village.y));
-            player.transform.position = new Vector3(village.x, groundY + 1.5f, village.y);
+            Vector3 spawn = new Vector3(villageCenter.x, 0, villageCenter.y);
+            spawn.y = terrain.SampleHeight(spawn) + 1.5f;
+            player.transform.position = spawn;
         }
+    }
+
+    void ConfigureCelticAtmosphere()
+    {
+        // 1. Warm Golden Hour Sunlight (Matches Drake River Image 2)
+        Light sun = RenderSettings.sun;
+        if (sun == null)
+        {
+            Light[] lights = FindObjectsByType<Light>(FindObjectsSortMode.None);
+            foreach (Light l in lights)
+            {
+                if (l.type == LightType.Directional) { sun = l; break; }
+            }
+        }
+
+        if (sun != null)
+        {
+            sun.transform.rotation = Quaternion.Euler(22f, -50f, 0f);
+            sun.color = new Color(1.0f, 0.94f, 0.84f);
+            sun.intensity = 1.25f;
+            sun.shadows = LightShadows.Soft;
+        }
+
+        // 2. Low-hanging Morning Mist / Fog
+        RenderSettings.fog = true;
+        RenderSettings.fogColor = new Color(0.72f, 0.79f, 0.84f);
+        RenderSettings.fogMode = FogMode.ExponentialSquared;
+        RenderSettings.fogDensity = 0.005f;
+    }
+
+    float FlattenZone(float original, float x, float z, Vector2 center, float radius, float targetHeight)
+    {
+        float d = Vector2.Distance(new Vector2(x, z), center);
+        float blend = 1f - Mathf.SmoothStep(radius * 0.65f, radius, d);
+        return Mathf.Lerp(original, targetHeight, blend);
+    }
+
+    float DistanceToRiver(float x, float z)
+    {
+        float min = float.MaxValue;
+        foreach (Vector2 p in riverPath)
+        {
+            min = Mathf.Min(min, Vector2.Distance(new Vector2(x, z), p));
+        }
+        return min;
+    }
+
+    float DistanceToRoads(Vector2 pt)
+    {
+        float d1 = DistanceToPolyline(pt, new Vector2[] { new Vector2(-400, -800), new Vector2(-220, -500), new Vector2(-80, -250), villageCenter });
+        float d2 = DistanceToPolyline(pt, new Vector2[] { villageCenter, new Vector2(160, 40), new Vector2(340, 160), stoneFort });
+        float d3 = DistanceToPolyline(pt, new Vector2[] { villageCenter, new Vector2(-220, -180), new Vector2(-420, -320), ancientRuins });
+        return Mathf.Min(d1, Mathf.Min(d2, d3));
+    }
+
+    float DistanceToPolyline(Vector2 pt, Vector2[] line)
+    {
+        float min = float.MaxValue;
+        foreach (Vector2 p in line)
+        {
+            min = Mathf.Min(min, Vector2.Distance(pt, p));
+        }
+        return min;
     }
 }
